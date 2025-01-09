@@ -11,7 +11,6 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -19,11 +18,6 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
-import org.openqa.selenium.By;
-import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.WebElement;
-import org.openqa.selenium.chrome.ChromeDriver;
-import org.openqa.selenium.chrome.ChromeOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,6 +27,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import com.google.common.hash.Hashing;
+import com.microsoft.playwright.Browser;
+import com.microsoft.playwright.Page;
+import com.microsoft.playwright.Playwright;
 import com.modlix.htmlcache.dto.CacheObject;
 import com.modlix.htmlcache.enumeration.Environment;
 import com.modlix.htmlcache.exception.HtmlCacheException;
@@ -53,8 +50,8 @@ public class HtmlCacheService {
     @Value("${fileCachePath:/tmp/htmlcache}")
     private String fileCachePath;
 
-    @Value("${chromedriver:/usr/bin/chromedriver}")
-    private String chromeDriver;
+    private Playwright playwright;
+    private Browser browser;
 
     public HtmlCacheService(CacheManager cacheManager) {
 
@@ -72,7 +69,9 @@ public class HtmlCacheService {
     @PostConstruct
     public void initialize() {
 
-        System.setProperty("webdriver.chrome.driver", chromeDriver);
+        this.playwright = Playwright.create();
+        this.browser = playwright.webkit().launch();
+
         Stream.of(Environment.values()).forEach(e -> {
             try {
                 Files.createDirectories(Paths.get(this.fileCachePath, e.toString()));
@@ -86,7 +85,7 @@ public class HtmlCacheService {
 
     @PreDestroy
     public void shutdownExecutor() {
-        System.out.println("Shutting down executor...");
+        logger.info("Shutting down executor...");
         virtualThreadExecutor.shutdown();
         try {
             if (!virtualThreadExecutor.awaitTermination(30, TimeUnit.SECONDS)) {
@@ -156,25 +155,25 @@ public class HtmlCacheService {
         if (cached != null && cached.getCreatedAt() > co.getCreatedAt())
             return;
 
-        ChromeOptions options = new ChromeOptions();
-        options.addArguments("--headless", "--disable-gpu", "--window-size=1280,1024");
-
-        WebDriver driver = new ChromeDriver(options);
-
         String url = co.getUrl();
         try {
-
-            driver.get(url);
+            Page page = browser.newPage();
+            logger.info("Loading driver : {}", co.getUrl());
+            page.navigate(co.getUrl());
 
             if (waitTime > 0)
                 Thread.sleep(Duration.ofMillis(waitTime).toMillis());
 
-            List<WebElement> list = driver.findElements(By.tagName("html"));
-            if (list == null || list.isEmpty())
+            String content = page.content();
+
+            if (content == null || content.isEmpty()) {
+                page.close();
                 return;
+            }
 
             co.setCreatedAt(System.currentTimeMillis());
-            this.caches.get(env).put(co.getPathKey(), co.setHtml(list.get(0).getAttribute("outerHTML")));
+            this.caches.get(env).put(co.getPathKey(), co.setHtml(content));
+            page.close();
 
             Thread.ofVirtual().start(() -> {
                 try (ObjectOutputStream oos = new ObjectOutputStream(
@@ -191,10 +190,9 @@ public class HtmlCacheService {
             throw new HtmlCacheException("Thread was interrupted while taking screenshot of URL: " + url, ex);
         } catch (Exception ex) {
 
-            throw new HtmlCacheException("Unable to take screenshot of URL: " + url, ex);
-        } finally {
-            driver.quit();
+            throw new HtmlCacheException("Unable to take html of URL: " + url, ex);
         }
+        logger.info("Done : {}", co.getUrl());
     }
 
     private static String validateAndGetURL(HttpServletRequest request, String key) {
