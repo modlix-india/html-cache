@@ -10,8 +10,8 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.EnumMap;
+
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -28,6 +28,8 @@ import org.springframework.util.StringUtils;
 
 import com.google.common.hash.Hashing;
 import com.microsoft.playwright.Browser;
+import com.microsoft.playwright.Browser.NewContextOptions;
+import com.microsoft.playwright.BrowserContext;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
 import com.modlix.htmlcache.dto.CacheObject;
@@ -45,13 +47,13 @@ public class HtmlCacheService {
 
     private final ExecutorService virtualThreadExecutor;
 
-    private final Map<Environment, Cache> caches = new HashMap<>();
+    private final EnumMap<Environment, Cache> caches = new EnumMap<>(Environment.class);
 
     @Value("${fileCachePath:/tmp/htmlcache}")
     private String fileCachePath;
 
     private Playwright playwright;
-    private Browser browser;
+    private BrowserContext context;
 
     public HtmlCacheService(CacheManager cacheManager) {
 
@@ -70,7 +72,10 @@ public class HtmlCacheService {
     public void initialize() {
 
         this.playwright = Playwright.create();
-        this.browser = playwright.webkit().launch();
+        Browser browser = playwright.webkit().launch();
+        NewContextOptions options = new NewContextOptions();
+        options.setScreenSize(1280, 1024);
+        this.context = browser.newContext(options);
 
         Stream.of(Environment.values()).forEach(e -> {
             try {
@@ -96,6 +101,12 @@ public class HtmlCacheService {
             logger.error("Shutdown interrupted.", e);
             virtualThreadExecutor.shutdownNow();
             Thread.currentThread().interrupt();
+        }
+
+        try {
+            this.playwright.close();
+        } catch (Exception ex) {
+            logger.error("Error while closing browser things.", ex);
         }
     }
 
@@ -157,7 +168,7 @@ public class HtmlCacheService {
 
         String url = co.getUrl();
         try {
-            Page page = browser.newPage();
+            Page page = this.context.newPage();
             logger.info("Loading driver : {}", co.getUrl());
             page.navigate(co.getUrl());
 
