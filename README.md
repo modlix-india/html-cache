@@ -60,10 +60,6 @@ curl -s -X DELETE htpp://localhost:8080/html/all
 
 ## Configuration
 
-1.  chromedriver
-
-    Path to the installed chrome driver. Default is /usr/bin/chromedriver.
-
 1.  fileCachePath
 
     Path to the file cache where all the images are stored. Defualt value is /tmp/htmlcache
