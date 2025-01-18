@@ -281,6 +281,8 @@ public class HtmlCacheService {
                         }
                         String pathKey = e.getFileName().toString();
                         pathKey = pathKey.substring(pathKey.lastIndexOf('-') + 1);
+                        // Remove last .cached from the file name
+                        pathKey = pathKey.substring(0, pathKey.length() - 7);
                         this.caches.get(env).evict(pathKey);
                     });
         } catch (Exception ex) {
