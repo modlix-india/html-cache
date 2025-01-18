@@ -53,7 +53,8 @@ public class HtmlCacheService {
     private String fileCachePath;
 
     private Playwright playwright;
-    private BrowserContext context;
+    private BrowserContext mobileContext;
+    private BrowserContext desktopContext;
 
     public HtmlCacheService(CacheManager cacheManager) {
 
@@ -75,7 +76,11 @@ public class HtmlCacheService {
         Browser browser = playwright.webkit().launch();
         NewContextOptions options = new NewContextOptions();
         options.setScreenSize(1280, 1024);
-        this.context = browser.newContext(options);
+        this.desktopContext = browser.newContext(options);
+
+        NewContextOptions mobileOptions = new NewContextOptions();
+        options.setScreenSize(480, 840);
+        this.mobileContext = browser.newContext(mobileOptions);
 
         Stream.of(Environment.values()).forEach(e -> {
             try {
@@ -114,8 +119,9 @@ public class HtmlCacheService {
 
         String appCode = request.getParameter("appCode");
         String clientCode = request.getParameter("clientCode");
+        String device = request.getParameter("device");
 
-        if (!StringUtils.hasText(clientCode) || !StringUtils.hasText(appCode)) {
+        if (!StringUtils.hasText(clientCode) || !StringUtils.hasText(appCode) || !StringUtils.hasText(device)) {
             throw new HtmlCacheException("Client Code and Application Code parameters cannot be empty");
         }
 
@@ -123,10 +129,10 @@ public class HtmlCacheService {
 
         String pathKey = Hashing.sha256().hashBytes(url.getBytes()).toString();
 
-        CacheObject cached = this.caches.get(env).get(pathKey, CacheObject.class);
+        CacheObject cached = this.caches.get(env).get(pathKey + device, CacheObject.class);
 
         if (cached == null) {
-            CacheObject newCached = new CacheObject(appCode, clientCode)
+            CacheObject newCached = new CacheObject(appCode, clientCode, device)
                     .setPathKey(pathKey)
                     .setUrl(url);
 
@@ -162,13 +168,13 @@ public class HtmlCacheService {
 
     private void getHTML(Environment env, CacheObject co, long waitTime) {
 
-        CacheObject cached = this.caches.get(env).get(co.getPathKey(), CacheObject.class);
+        CacheObject cached = this.caches.get(env).get(co.getPathKey() + co.getDevice(), CacheObject.class);
         if (cached != null && cached.getCreatedAt() > co.getCreatedAt())
             return;
 
         String url = co.getUrl();
         try {
-            Page page = this.context.newPage();
+            Page page = co.getDevice().equals("mobile") ? this.mobileContext.newPage() : this.desktopContext.newPage();
             logger.info("Loading driver : {}", co.getUrl());
             page.navigate(co.getUrl());
 
@@ -183,7 +189,7 @@ public class HtmlCacheService {
             }
 
             co.setCreatedAt(System.currentTimeMillis());
-            this.caches.get(env).put(co.getPathKey(), co.setHtml(content));
+            this.caches.get(env).put(co.getPathKey() + co.getDevice(), co.setHtml(content));
             page.close();
 
             Thread.ofVirtual().start(() -> {
@@ -318,6 +324,7 @@ public class HtmlCacheService {
 
         String appCode = request.getParameter("appCode");
         String clientCode = request.getParameter("clientCode");
+        String device = request.getParameter("device");
 
         if (!StringUtils.hasText(clientCode) || !StringUtils.hasText(appCode)) {
             throw new HtmlCacheException("Client Code and Application Code parameters cannot be empty");
@@ -330,10 +337,10 @@ public class HtmlCacheService {
         CacheObject cached = this.caches.get(env).get(pathKey, CacheObject.class);
 
         if (cached != null) {
-            this.caches.get(env).evict(pathKey);
+            this.caches.get(env).evict(pathKey + device);
         }
 
-        String fileName = CacheObject.getFileName(pathKey, appCode, clientCode);
+        String fileName = CacheObject.getFileName(pathKey, appCode, clientCode, device);
 
         try {
             Files.deleteIfExists(Paths.get(this.fileCachePath, env.toString(), fileName));

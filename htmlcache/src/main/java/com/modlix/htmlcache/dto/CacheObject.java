@@ -23,13 +23,15 @@ public class CacheObject implements Serializable {
     private String appCode;
     @NonNull
     private String clientCode;
+    @NonNull
+    private String device;
     private String html;
 
-    public static String getFileName(String pathKey, String appCode, String clientCode) {
-        return appCode + "-" + clientCode + "-" + pathKey + ".cached";
+    public static String getFileName(String pathKey, String appCode, String clientCode, String device) {
+        return appCode + "-" + clientCode + "-" + pathKey + device + ".cached";
     }
 
     public String getFileName() {
-        return getFileName(pathKey, appCode, clientCode);
+        return getFileName(pathKey, appCode, clientCode, device);
     }
 }
