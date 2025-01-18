@@ -79,7 +79,7 @@ public class HtmlCacheService {
         this.desktopContext = browser.newContext(options);
 
         NewContextOptions mobileOptions = new NewContextOptions();
-        options.setScreenSize(480, 840);
+        mobileOptions.setScreenSize(480, 840);
         this.mobileContext = browser.newContext(mobileOptions);
 
         Stream.of(Environment.values()).forEach(e -> {
