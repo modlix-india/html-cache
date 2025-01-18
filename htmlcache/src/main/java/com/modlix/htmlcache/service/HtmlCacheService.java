@@ -75,11 +75,11 @@ public class HtmlCacheService {
         this.playwright = Playwright.create();
         Browser browser = playwright.webkit().launch();
         NewContextOptions options = new NewContextOptions();
-        options.setScreenSize(1280, 1024);
+        options.setViewportSize(1280, 1024);
         this.desktopContext = browser.newContext(options);
 
         NewContextOptions mobileOptions = new NewContextOptions();
-        mobileOptions.setScreenSize(480, 840);
+        mobileOptions.setViewportSize(480, 840);
         this.mobileContext = browser.newContext(mobileOptions);
 
         Stream.of(Environment.values()).forEach(e -> {
